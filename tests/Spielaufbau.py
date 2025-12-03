@@ -1,5 +1,17 @@
 import numpy as np
 
+def ist_bereich_frei_mit_abstand(feld, z, s, form):
+    zeilen, spalten = feld.shape
+    z1 = max(0, z - 1)
+    s1 = max(0, s - 1)
+    z2 = min(zeilen, z + form[0] + 1)
+    s2 = min(spalten, s + form[1] + 1)
+
+    # prüft Schiff plus Randring
+    return np.all(feld[z1:z2, s1:s2] == 0)
+
+
+
 spielfeld = np.zeros((10, 10), dtype=int)
 anzahl = {5:1, 4:2, 3:3, 2:4}
 
@@ -23,7 +35,7 @@ def schiffe_platzieren():
                     (z, s)
                     for z in range(zeilen_feld - form[0] + 1)
                     for s in range(spalten_feld - form[1] + 1)
-                    if np.all(spielfeld[z:z + form[0], s:s + form[1]] == 0)]
+                    if ist_bereich_frei_mit_abstand(spielfeld, z, s, form)]
 
                 if mögliche_platzierung:
 
