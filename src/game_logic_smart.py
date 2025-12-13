@@ -1,22 +1,25 @@
-# src/game_logic_smart.py (OPTIMIERTE VERSION: Mit Versenkt-Prüfer)
+# src/game_logic_smart.py (STRATEGISCHE KI - MODERNISIERT FÜR SEEDSEQUENCE)
 
 import numpy as np
-from collections import deque
-import random
 import time
+from collections import deque
+from numpy.random import Generator, SeedSequence, PCG64
 from .game_setup import erstelle_neues_spielfeld, ANZ_SCHIFFE, FELD_GROESSE
 
-# Globale Konstanten für den KI-Status
+# --- KONSTANTEN ---
 STATUS_UNBEKANNT = 0
 STATUS_WASSER = 1
 STATUS_TREFFER = 2
 
 
+# --- HILFSFUNKTIONEN ---
+
 def get_nachbarn(z, s, zeilen, spalten):
-    """Gibt alle orthogonalen und diagonalen Nachbarn zurück (für den Abstand um Schiffe)."""
+    """Gibt alle acht umliegenden Nachbarn (inkl. Diagonalen) zurück."""
     nachbarn = []
     for dz in [-1, 0, 1]:
         for ds in [-1, 0, 1]:
+            # Die Position selbst überspringen
             if dz == 0 and ds == 0:
                 continue
             nz, ns = z + dz, s + ds
@@ -27,133 +30,100 @@ def get_nachbarn(z, s, zeilen, spalten):
 
 def markiere_versenktes_schiff(z_start, s_start, spielfeld_original, ki_status):
     """
-    Prüft, ob das Schiff, das an (z_start, s_start) liegt, vollständig versenkt ist.
-    Wenn ja, markiert es den umgebenden Bereich als STATUS_WASSER in ki_status.
-
-    :return: True, wenn das Schiff versenkt wurde, False sonst.
+    Prüft, ob das Schiff, das an (z_start, s_start) getroffen wurde, versenkt ist.
+    Wenn ja, markiert es den Abstand als Wasser (STATUS_WASSER).
     """
     schiffs_laenge = spielfeld_original[z_start, s_start]
     zeilen, spalten = ki_status.shape
 
-    # 1. Sammle alle Koordinaten dieses Schiffes
-    schiffs_koordinaten = []
+    # Zähle alle Treffer auf den Teilen dieses Schiffstyps
+    # Dies funktioniert, da die Schiffs-IDs der Länge entsprechen
+    treffer_zaehler = np.sum([ki_status[z, s] == STATUS_TREFFER
+                              for z, s in np.argwhere(spielfeld_original == schiffs_laenge)])
 
-    # Der Wert im Originalfeld ist die Länge des Schiffes
-    alle_moeglichen_koordinaten = np.argwhere(spielfeld_original == schiffs_laenge)
-
-    # Iteriere über alle Teile dieser Länge und prüfe, ob sie zusammenhängen
-    # Da das spielfeld_original nur die Schiffslänge enthält, müssen wir
-    # das Trefferverhalten über ki_status prüfen.
-
-    treffer_zaehler = 0
-
-    # Finde alle Teile des Schiffes in der ki_status Matrix (die den Treffer-Status speichert)
-    # WICHTIG: Die ursprüngliche Logik gibt nicht einfach die Schiffskoordinaten zurück.
-    # Wir müssen das Originalfeld verwenden, um die gesamte Form zu erkennen.
-
-    # Vereinfachte Prüfung (funktioniert nur, wenn wir die Schiffsteile im Originalfeld auf 0 setzen würden, was wir nicht tun.)
-    # Wir müssen hier auf dem Originalfeld iterieren und im KI-Status prüfen, ob alle Teile getroffen sind.
-
-    # Alternativer, robuster Ansatz: Zähle alle Treffer des Schiffstyps
-    for z, s in alle_moeglichen_koordinaten:
-        if ki_status[z, s] == STATUS_TREFFER:
-            treffer_zaehler += 1
-            schiffs_koordinaten.append((z, s))
-
-    # 2. Prüfe auf Versenkung
     if treffer_zaehler == schiffs_laenge:
-        # Schiff ist versenkt!
-
-        # 3. Markiere den Abstand als Wasser
-        for z_schiff, s_schiff in schiffs_koordinaten:
+        # Schiff ist versenkt: Markiere das umgebende 3x3 Raster jedes Teils als Wasser
+        for z_schiff, s_schiff in np.argwhere(spielfeld_original == schiffs_laenge):
             for nz, ns in get_nachbarn(z_schiff, s_schiff, zeilen, spalten):
-                # Markiere nur Felder, die noch unbekannt sind
                 if ki_status[nz, ns] == STATUS_UNBEKANNT:
                     ki_status[nz, ns] = STATUS_WASSER
-
         return True
 
     return False
 
 
-# Die Hauptsimulationsfunktion
-def simuliere_spiel_smart():
-    # --- 1. Initialisierung und Setup ---
-    # Setting Seed (wie zuvor, um faire Simulationen zu gewährleisten)
-    aktuelle_zeit = int(time.time() * 1000000)
-    np.random.seed(aktuelle_zeit % 2 ** 32)
-    random.seed(aktuelle_zeit % 2 ** 32)
+# --- HAUPTSIMULATION ---
 
-    feld = erstelle_neues_spielfeld()
+# NEU: Erwartet das SeedSequence-Objekt (Standardisierung)
+def simuliere_spiel_smart(seed_sequence):
+    """
+    Simuliert ein Schiffe-Versenken-Spiel mit der strategischen KI (Jagd/Ziel-Modus).
+    """
+
+    # 1. Erzeuge lokalen Generator aus der übergebenen SeedSequence
+    rng = Generator(PCG64(seed_sequence))
+
+    # 2. Feld erstellen (übergibt den Generator)
+    feld = erstelle_neues_spielfeld(setup_rng=rng)
+
     zeilen, spalten = FELD_GROESSE
-
-    # spielfeld_original enthält die Längen der Schiffe und dient als Nachschlagewerk (Read-Only)
     spielfeld_original = np.copy(feld)
-
-    # spielfeld_zum_beschuss wird verändert (Treffer auf 0 gesetzt)
-    spielfeld_zum_beschuss = np.copy(feld)
-
+    spielfeld_zum_beschuss = np.copy(
+        feld)  # Kopie wird benötigt, um getroffene Teile zu "entfernen" (wenn nötig, aber hier nicht verwendet)
     gesamte_schiffsteile = np.sum([länge * ANZ_SCHIFFE[länge] for länge in ANZ_SCHIFFE])
 
     schüsse = 0
     treffer_zaehler = 0
 
-    # ki_status: 0: Unbekannt, 1: Wasser (Miss), 2: Treffer (Hit)
+    # ki_status speichert den aktuellen Wissenstand der KI
     ki_status = np.zeros(FELD_GROESSE, dtype=int)
-
-    # Warteschlange für den Zielmodus
+    # ziel_warteschlange speichert Koordinaten, die nach einem Treffer in der Nähe beschossen werden sollen
     ziel_warteschlange = deque()
 
-    # --- 2. Haupt-Schleife: Jagd- und Zielmodus ---
     while treffer_zaehler < gesamte_schiffsteile:
 
-        # --- BESTIMMEN DES NÄCHSTEN SCHUSSES ---
+        # --- BESTIMMEN DES NÄCHSTEN SCHUSSES (Jagd/Ziel) ---
         if ziel_warteschlange:
             # ZIELMODUS
             z, s = ziel_warteschlange.popleft()
-
-            # Überspringe, wenn das Feld bereits bekannt ist
             if ki_status[z, s] != STATUS_UNBEKANNT:
-                continue
-
+                continue  # Bereits beschossen, überspringen
         else:
-            # JAGDMODUS (Checkerboard Pattern)
-
+            # JAGDMODUS (Checkerboard-Strategie)
             z, s = None, None
-            # Jagdstrategie: Wir suchen nur Felder, die UNBEKANNT sind UND auf dem Schachbrettmuster liegen.
             alle_unbekannten = [(z_unk, s_unk)
                                 for z_unk in range(zeilen)
                                 for s_unk in range(spalten)
                                 if ki_status[z_unk, s_unk] == STATUS_UNBEKANNT]
 
-            # Finde ein unbekanntes Feld im Schachbrettmuster
+            # 1. Suche nach Checkerboard-Positionen
             for z_jagd, s_jagd in alle_unbekannten:
                 if (z_jagd + s_jagd) % 2 == 0:
                     z, s = z_jagd, s_jagd
                     break
 
-            # Fallback: Wenn das Muster keine Felder mehr hat, schießen wir zufällig (aber nur auf Unbekannt)
+            # 2. Fallback: Wenn alle Checkerboard-Positionen weg sind, wähle zufällig aus dem Rest
             if z is None and alle_unbekannten:
-                z, s = alle_unbekannten.pop(np.random.randint(len(alle_unbekannten)))
+                # NEU: Nutzt den lokalen Generator (ersetzt np.random.randint)
+                zufalls_index = rng.integers(len(alle_unbekannten))
+                z, s = alle_unbekannten.pop(zufalls_index)
 
-            if z is None:
-                # Sollte nur passieren, wenn alle 100 Felder bekannt sind (Spielende)
-                break
+            if z is None: break  # Spiel ist theoretisch vorbei, falls die Schleife nicht greift
 
-                # --- SCHUSS AUSFÜHREN ---
+        # --- SCHUSS AUSFÜHREN ---
         schüsse += 1
 
-        if spielfeld_zum_beschuss[z, s] > 0:
+        if spielfeld_original[z, s] > 0:
             # TREFFER!
             treffer_zaehler += 1
-            ki_status[z, s] = STATUS_TREFFER  # Markiere als Treffer
+            ki_status[z, s] = STATUS_TREFFER
 
-            # Versenkt-Prüfer aufrufen: Markiere Abstand als Wasser
+            # Prüfen, ob das Schiff versenkt wurde
             if markiere_versenktes_schiff(z, s, spielfeld_original, ki_status):
-                # Wenn versenkt, leere die Warteschlange, da das Schiff erledigt ist
+                # Wenn versenkt, leere die Warteschlange, um mit der Jagd fortzufahren
                 ziel_warteschlange.clear()
 
-            # Neue umliegende Ziele zur Warteschlange hinzufügen (nur orthogonal)
+            # Füge die umliegenden (unbeschossenen) orthogonalen Nachbarn der Warteschlange hinzu
             for nz, ns in [(z + 1, s), (z - 1, s), (z, s + 1), (z, s - 1)]:
                 if 0 <= nz < zeilen and 0 <= ns < spalten and ki_status[nz, ns] == STATUS_UNBEKANNT:
                     ziel_warteschlange.append((nz, ns))
@@ -162,4 +132,5 @@ def simuliere_spiel_smart():
             # WASSER
             ki_status[z, s] = STATUS_WASSER
 
+    # Gibt nur die Gesamtzahl der Schüsse zurück
     return schüsse

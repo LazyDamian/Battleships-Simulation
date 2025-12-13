@@ -1,70 +1,93 @@
 # src/game_setup.py
 
 import numpy as np
+import random
+from numpy.random import Generator, SeedSequence, PCG64
 
-# Konfiguration der Schiffe (Länge: Anzahl)
-ANZ_SCHIFFE = {5: 1, 4: 1, 3: 2, 2: 1}
-FELD_GROESSE = (10, 10)
+# Konstanten (sollten in einer eigenen Datei liegen, aber hier zur Übersichtlichkeit)
+FELD_GROESSE = (10, 10)  # 10x10 Feld
+ANZ_SCHIFFE = {
+    5: 1,  # Schlachtschiff
+    4: 1,  # Kreuzer
+    3: 2,  # Zerstörer
+    2: 1  # U-Boot
+}
 
 
-def ist_bereich_frei_mit_abstand(feld, z, s, form):
+def ist_platz_frei(feld, reihe, spalte, laenge, horizontal):
+    """Prüft, ob ein Schiff an der gegebenen Position platziert werden kann."""
+    zeilen, spalten = FELD_GROESSE
+
+    if horizontal:
+        if spalte + laenge > spalten:
+            return False
+        # Prüfen auf Überlappung und Abstand
+        for s in range(spalte, spalte + laenge):
+            # Prüfen des Bereichs inkl. Nachbarn im 3x3 Block um jedes Schiffsteil
+            for r_offset in [-1, 0, 1]:
+                for s_offset in [-1, 0, 1]:
+                    nr, ns = reihe + r_offset, s + s_offset
+                    if 0 <= nr < zeilen and 0 <= ns < spalten and feld[nr, ns] != 0:
+                        return False
+    else:
+        if reihe + laenge > zeilen:
+            return False
+        for r in range(reihe, reihe + laenge):
+            for r_offset in [-1, 0, 1]:
+                for s_offset in [-1, 0, 1]:
+                    nr, ns = r + r_offset, spalte + s_offset
+                    if 0 <= nr < zeilen and 0 <= ns < spalten and feld[nr, ns] != 0:
+                        return False
+
+    return True
+
+
+# NEU: Die Funktion nimmt jetzt ein Generator-Objekt entgegen
+def erstelle_neues_spielfeld(setup_rng):
     """
-    Prüft, ob der Bereich für die Platzierung eines Schiffes frei ist,
-    einschließlich eines 1-Felder-Abstands rundherum.
+    Erstellt ein leeres Spielfeld (0) und platziert die Schiffe.
     """
-    zeilen, spalten = feld.shape
+    feld = np.zeros(FELD_GROESSE, dtype=int)
+    zeilen, spalten = FELD_GROESSE
 
-    z1 = max(0, z - 1)
-    s1 = max(0, s - 1)
-    z2 = min(zeilen, z + form[0] + 1)
-    s2 = min(spalten, s + form[1] + 1)
+    schiffslaengen = []
+    for laenge, anzahl in ANZ_SCHIFFE.items():
+        schiffslaengen.extend([laenge] * anzahl)
 
-    return np.all(feld[z1:z2, s1:s2] == 0)
+    # Wir mischen die Längen, damit die Platzierung reproduzierbar ist
+    # NEU: Nutzt den lokalen Generator
+    schiffslaengen = setup_rng.permutation(schiffslaengen)
 
+    for laenge in schiffslaengen:
+        platziert = False
+        versuche = 0
+        while not platziert and versuche < 1000:
+            versuche += 1
 
-def erstelle_neues_spielfeld():
-    """
-    Erzeugt ein NEUES, zufällig platziertes Spielfeld.
-    """
+            # NEU: Nutzt den lokalen Generator für die Zufallswerte
 
-    neues_feld = np.zeros(FELD_GROESSE, dtype=int)
-    zeilen_feld, spalten_feld = neues_feld.shape
+            # 1. Orientierung: boolsche Werte sind im Generator nicht direkt, daher choice
+            ist_horizontal = setup_rng.choice([True, False])
 
-    # Durchlaufe Schiffe von groß nach klein
-    for länge in sorted(ANZ_SCHIFFE.keys(), reverse=True):
-        anzahl_schiffe = ANZ_SCHIFFE[länge]
+            # 2. Startposition: nutzt integers (ersetzt np.random.randint)
+            if ist_horizontal:
+                max_r = zeilen - 1
+                max_s = spalten - laenge
+            else:
+                max_r = zeilen - laenge
+                max_s = spalten - 1
 
-        for _ in range(anzahl_schiffe):
-            platziert = False
+            reihe = setup_rng.integers(0, max_r + 1)
+            spalte = setup_rng.integers(0, max_s + 1)
 
-            # Zufällige Richtung wählen (horiz/vert)
-            for richtung in np.random.permutation(["vert", "horiz"]):
-
-                if richtung == "vert":
-                    form = (länge, 1)
+            if ist_platz_frei(feld, reihe, spalte, laenge, ist_horizontal):
+                if ist_horizontal:
+                    feld[reihe, spalte:spalte + laenge] = laenge
                 else:
-                    form = (1, länge)
+                    feld[reihe:reihe + laenge, spalte] = laenge
+                platziert = True
 
-                # Finde alle möglichen Platzierungen
-                mögliche_platzierung = [
-                    (z, s)
-                    for z in range(zeilen_feld - form[0] + 1)
-                    for s in range(spalten_feld - form[1] + 1)
-                    if ist_bereich_frei_mit_abstand(neues_feld, z, s, form)]
+        if not platziert:
+            raise RuntimeError("Schiff konnte nicht platziert werden. Falsche Konstanten?")
 
-                if mögliche_platzierung:
-                    # Wähle eine zufällige Platzierung
-                    idx = np.random.randint(len(mögliche_platzierung))
-                    z, s = mögliche_platzierung[idx]
-
-                    neues_feld[z:z + form[0], s:s + form[1]] = länge
-                    platziert = True
-                    break
-
-            # Wenn die Platzierung fehlschlägt, ist das ein kritischer Fehler
-            if not platziert:
-                raise RuntimeError(
-                    f"Konnte Schiff der Länge {länge} nicht platzieren."
-                )
-
-    return neues_feld
+    return feld

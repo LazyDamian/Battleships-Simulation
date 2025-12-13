@@ -1,57 +1,58 @@
 # main.py
 
-import numpy as np
-from src.monte_carlo import monte_carlo_simulation
-# NEUE IMPORTE
 from src.game_logic import simuliere_spiel as simuliere_zufall
+from src.monte_carlo import monte_carlo_simulation
 from src.game_logic_smart import simuliere_spiel_smart as simuliere_smart
 
-N_SIMULATIONEN = 10000  # Hohe Zahl für stabile Statistik
+N_SIMULATIONEN = 10000
 
 
 def main():
-    # 1. Simulation: Zufallsstrategie
-    print("--- 1. Starte Simulation: ZUFALLSSTRATEGIE ---")
-    # Hier wird die angepasste Funktion aus src/monte_carlo.py verwendet, die die simuliere_funktion erwartet.
-    statistiken_zufall = monte_carlo_simulation(N_SIMULATIONEN, simuliere_zufall)
+    HAUPT_SEED = 42
 
-    # 2. Simulation: STRATEGISCHE KI
-    print("\n--- 2. Starte Simulation: STRATEGISCHE KI ---")
-    statistiken_smart = monte_carlo_simulation(N_SIMULATIONEN, simuliere_smart)
+    # --- Simulationen durchführen ---
 
+    print(f"--- Starte Simulation mit Basis-Seed {HAUPT_SEED} ---\n")
+
+    # 1. Zufallssuche
+    print("--- 1. Simulation: ZUFALLSSTRATEGIE ---")
+    statistiken_zufall = monte_carlo_simulation(N_SIMULATIONEN, simuliere_zufall, basis_seed=HAUPT_SEED)
+
+    # 2. Strategische KI
+    print("\n--- 2. Simulation: STRATEGISCHE KI ---")
+    statistiken_smart = monte_carlo_simulation(N_SIMULATIONEN, simuliere_smart, basis_seed=HAUPT_SEED)
+
+    # --- Ausgabe der Ergebnisse ---
     print("\n=======================================================")
-    print("                VERGLEICH DER ERGEBNISSE               ")
+    print("                ERGEBNIS VERGLEICH                     ")
     print("=======================================================")
 
-    print(f"Simulationen pro Strategie: {N_SIMULATIONEN}")
-    print("-" * 80)
+    def r(val): return round(val, 2)
 
-    # NEUE, DETAILLIERTE TABELLE
+    # Header
     print(f"{'Metrik':<25} | {'Zufallssuche':<25} | {'Strategische KI':<25}")
     print("-" * 80)
 
-    def r(val):
-        # Hilfsfunktion zum Runden auf zwei Dezimalstellen
-        return round(val, 2)
-
+    # Daten
     print(
-        f"{'Durchschnittl. Schüsse':<25} | {r(statistiken_zufall['Durchschnittliche Schüsse']):<25} | {r(statistiken_smart['Durchschnittliche Schüsse']):<25}")
-    print(f"{'Median Schüsse':<25} | {r(statistiken_zufall['Median']):<25} | {r(statistiken_smart['Median']):<25}")
+        f"{'Durchschnitt':<25} | {r(statistiken_zufall['Durchschnittliche Schüsse']):<25} | {r(statistiken_smart['Durchschnittliche Schüsse']):<25}")
+    print(f"{'Median':<25} | {r(statistiken_zufall['Median']):<25} | {r(statistiken_smart['Median']):<25}")
+    print(f"{'Varianz':<25} | {r(statistiken_zufall['Varianz']):<25} | {r(statistiken_smart['Varianz']):<25}")
     print(
         f"{'Standardabweichung':<25} | {r(statistiken_zufall['Standardabweichung']):<25} | {r(statistiken_smart['Standardabweichung']):<25}")
 
-    # HIER KOMMEN DIE NEUEN WERTE:
-    print(f"{'Varianz':<25} | {r(statistiken_zufall['Varianz']):<25} | {r(statistiken_smart['Varianz']):<25}")
-    print(
-        f"{'Maximum Schüsse':<25} | {r(statistiken_zufall['Maximum Schüsse']):<25} | {r(statistiken_smart['Maximum Schüsse']):<25}")
-    print(
-        f"{'Minimum Schüsse':<25} | {r(statistiken_zufall['Minimum Schüsse']):<25} | {r(statistiken_smart['Minimum Schüsse']):<25}")
+    print("-" * 80)
 
-    differenz = statistiken_zufall['Durchschnittliche Schüsse'] - statistiken_smart['Durchschnittliche Schüsse']
-    print("-" * 80)
+    # Min und Max als Integer
     print(
-        f"Verbesserung durch KI: {r(differenz)} Schüsse ({r(differenz / statistiken_zufall['Durchschnittliche Schüsse'] * 100)} %)")
+        f"{'Minimum Schüsse':<25} | {int(statistiken_zufall['Minimum Schüsse']):<25} | {int(statistiken_smart['Minimum Schüsse']):<25}")
+    print(
+        f"{'Maximum Schüsse':<25} | {int(statistiken_zufall['Maximum Schüsse']):<25} | {int(statistiken_smart['Maximum Schüsse']):<25}")
+
+    # Fazit
+    diff = statistiken_zufall['Durchschnittliche Schüsse'] - statistiken_smart['Durchschnittliche Schüsse']
     print("-" * 80)
+    print(f"Verbesserung: Die KI benötigt im Schnitt {r(diff)} Schüsse weniger.")
 
 
 if __name__ == "__main__":
