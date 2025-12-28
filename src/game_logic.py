@@ -1,37 +1,36 @@
-# src/game_logic.py
-
 import numpy as np
-import random
-from numpy.random import Generator, SeedSequence, PCG64  # NEU
-from .game_setup import erstelle_neues_spielfeld, ANZ_SCHIFFE, FELD_GROESSE
+from numpy.random import Generator, PCG64, SeedSequence
+from typing import List, Tuple
+from .game_setup import create_new_board, SHIP_CONFIG, BOARD_SIZE
 
 
-# NEU: Erwartet das SeedSequence Objekt
-def simuliere_spiel(seed_sequence):
-    # 1. Erzeuge lokalen Generator
+def run_random_simulation(seed_sequence: SeedSequence) -> int:
+    """
+    Simulates a game using a purely random shooting strategy.
+
+    Args:
+        seed_sequence: SeedSequence for the local generator.
+
+    Returns:
+        Total number of shots fired to sink all ships.
+    """
     rng = Generator(PCG64(seed_sequence))
+    board = create_new_board(rng=rng)
 
-    # 2. Feld erstellen (übergibt den Generator)
-    feld = erstelle_neues_spielfeld(setup_rng=rng)
+    total_targets = np.sum([l * count for l, count in SHIP_CONFIG.items()])
+    shots_fired = 0
+    hits_count = 0
 
-    spielfeld_zum_beschuss = np.copy(feld)
-    gesamte_schiffsteile = np.sum([länge * ANZ_SCHIFFE[länge] for länge in ANZ_SCHIFFE])
-    schüsse = 0
-    treffer_zaehler = 0
+    rows, cols = BOARD_SIZE
+    coordinates = [(r, c) for r in range(rows) for c in range(cols)]
+    coordinates = list(rng.permutation(coordinates))
 
-    zeilen, spalten = FELD_GROESSE
-    alle_koordinaten = [(z, s) for z in range(zeilen) for s in range(spalten)]
+    while hits_count < total_targets:
+        if not coordinates: break
+        r, c = coordinates.pop()
+        shots_fired += 1
 
-    # NEU: Mischen der Koordinaten über den Generator
-    alle_koordinaten = list(rng.permutation(alle_koordinaten))
+        if board[r, c] > 0:
+            hits_count += 1
 
-    while treffer_zaehler < gesamte_schiffsteile:
-        if not alle_koordinaten: break
-
-        z, s = alle_koordinaten.pop()
-        schüsse += 1
-
-        if spielfeld_zum_beschuss[z, s] > 0:
-            treffer_zaehler += 1
-
-    return schüsse
+    return shots_fired

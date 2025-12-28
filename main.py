@@ -1,58 +1,47 @@
-# main.py
+from src.game_logic import run_random_simulation
+from src.game_logic_smart import run_smart_simulation
+from src.monte_carlo import run_monte_carlo_simulation
+from typing import Dict, Any
 
-from src.game_logic import simuliere_spiel as simuliere_zufall
-from src.monte_carlo import monte_carlo_simulation
-from src.game_logic_smart import simuliere_spiel_smart as simuliere_smart
+N_SIMULATIONS = 10000
+BASE_SEED = 42
 
-N_SIMULATIONEN = 10000
+
+def print_comparison(random_stats: Dict[str, Any], smart_stats: Dict[str, Any]) -> None:
+    """Prints a formatted comparison table."""
+    print("\n" + "=" * 60)
+    print(f"{'METRIC':<20} | {'RANDOM STRATEGY':<18} | {'SMART AI':<18}")
+    print("-" * 60)
+
+    metrics = [
+        ('Average Shots', 'avg'),
+        ('Median', 'median'),
+        ('Variance', 'variance'),
+        ('Std Deviation', 'std_dev')
+    ]
+
+    for label, key in metrics:
+        print(f"{label:<20} | {random_stats[key]:<18.2f} | {smart_stats[key]:<18.2f}")
+
+    print("-" * 60)
+    print(f"{'Minimum Shots':<20} | {int(random_stats['min']):<18} | {int(smart_stats['min']):<18}")
+    print(f"{'Maximum Shots':<20} | {int(random_stats['max']):<18} | {int(smart_stats['max']):<18}")
+    print("=" * 60)
+
+    improvement = random_stats['avg'] - smart_stats['avg']
+    print(f"Result: The AI is on average {improvement:.2f} shots more efficient.")
 
 
 def main():
-    HAUPT_SEED = 42
+    print(f"--- Battleship Monte Carlo (Seed: {BASE_SEED}) ---")
 
-    # --- Simulationen durchführen ---
+    # 1. Random Strategy
+    random_results = run_monte_carlo_simulation(N_SIMULATIONS, run_random_simulation, BASE_SEED)
 
-    print(f"--- Starte Simulation mit Basis-Seed {HAUPT_SEED} ---\n")
+    # 2. Smart AI
+    smart_results = run_monte_carlo_simulation(N_SIMULATIONS, run_smart_simulation, BASE_SEED)
 
-    # 1. Zufallssuche
-    print("--- 1. Simulation: ZUFALLSSTRATEGIE ---")
-    statistiken_zufall = monte_carlo_simulation(N_SIMULATIONEN, simuliere_zufall, basis_seed=HAUPT_SEED)
-
-    # 2. Strategische KI
-    print("\n--- 2. Simulation: STRATEGISCHE KI ---")
-    statistiken_smart = monte_carlo_simulation(N_SIMULATIONEN, simuliere_smart, basis_seed=HAUPT_SEED)
-
-    # --- Ausgabe der Ergebnisse ---
-    print("\n=======================================================")
-    print("                ERGEBNIS VERGLEICH                     ")
-    print("=======================================================")
-
-    def r(val): return round(val, 2)
-
-    # Header
-    print(f"{'Metrik':<25} | {'Zufallssuche':<25} | {'Strategische KI':<25}")
-    print("-" * 80)
-
-    # Daten
-    print(
-        f"{'Durchschnitt':<25} | {r(statistiken_zufall['Durchschnittliche Schüsse']):<25} | {r(statistiken_smart['Durchschnittliche Schüsse']):<25}")
-    print(f"{'Median':<25} | {r(statistiken_zufall['Median']):<25} | {r(statistiken_smart['Median']):<25}")
-    print(f"{'Varianz':<25} | {r(statistiken_zufall['Varianz']):<25} | {r(statistiken_smart['Varianz']):<25}")
-    print(
-        f"{'Standardabweichung':<25} | {r(statistiken_zufall['Standardabweichung']):<25} | {r(statistiken_smart['Standardabweichung']):<25}")
-
-    print("-" * 80)
-
-    # Min und Max als Integer
-    print(
-        f"{'Minimum Schüsse':<25} | {int(statistiken_zufall['Minimum Schüsse']):<25} | {int(statistiken_smart['Minimum Schüsse']):<25}")
-    print(
-        f"{'Maximum Schüsse':<25} | {int(statistiken_zufall['Maximum Schüsse']):<25} | {int(statistiken_smart['Maximum Schüsse']):<25}")
-
-    # Fazit
-    diff = statistiken_zufall['Durchschnittliche Schüsse'] - statistiken_smart['Durchschnittliche Schüsse']
-    print("-" * 80)
-    print(f"Verbesserung: Die KI benötigt im Schnitt {r(diff)} Schüsse weniger.")
+    print_comparison(random_results, smart_results)
 
 
 if __name__ == "__main__":

@@ -1,136 +1,90 @@
-# src/game_logic_smart.py (STRATEGISCHE KI - MODERNISIERT FÜR SEEDSEQUENCE)
-
 import numpy as np
-import time
 from collections import deque
-from numpy.random import Generator, SeedSequence, PCG64
-from .game_setup import erstelle_neues_spielfeld, ANZ_SCHIFFE, FELD_GROESSE
+from numpy.random import Generator, PCG64, SeedSequence
+from typing import Tuple, List, Optional, Deque
+from .game_setup import create_new_board, SHIP_CONFIG, BOARD_SIZE
 
-# --- KONSTANTEN ---
-STATUS_UNBEKANNT = 0
-STATUS_WASSER = 1
-STATUS_TREFFER = 2
-
-
-# --- HILFSFUNKTIONEN ---
-
-def get_nachbarn(z, s, zeilen, spalten):
-    """Gibt alle acht umliegenden Nachbarn (inkl. Diagonalen) zurück."""
-    nachbarn = []
-    for dz in [-1, 0, 1]:
-        for ds in [-1, 0, 1]:
-            # Die Position selbst überspringen
-            if dz == 0 and ds == 0:
-                continue
-            nz, ns = z + dz, s + ds
-            if 0 <= nz < zeilen and 0 <= ns < spalten:
-                nachbarn.append((nz, ns))
-    return nachbarn
+# --- STATUS CONSTANTS ---
+STATE_UNKNOWN = 0
+STATE_MISS = 1
+STATE_HIT = 2
 
 
-def markiere_versenktes_schiff(z_start, s_start, spielfeld_original, ki_status):
-    """
-    Prüft, ob das Schiff, das an (z_start, s_start) getroffen wurde, versenkt ist.
-    Wenn ja, markiert es den Abstand als Wasser (STATUS_WASSER).
-    """
-    schiffs_laenge = spielfeld_original[z_start, s_start]
-    zeilen, spalten = ki_status.shape
+def get_neighbors(r: int, c: int, rows: int, cols: int) -> List[Tuple[int, int]]:
+    """Returns all 8 surrounding neighbors (3x3 area)."""
+    neighbors = []
+    for dr in [-1, 0, 1]:
+        for dc in [-1, 0, 1]:
+            if dr == 0 and dc == 0: continue
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < rows and 0 <= nc < cols:
+                neighbors.append((nr, nc))
+    return neighbors
 
-    # Zähle alle Treffer auf den Teilen dieses Schiffstyps
-    # Dies funktioniert, da die Schiffs-IDs der Länge entsprechen
-    treffer_zaehler = np.sum([ki_status[z, s] == STATUS_TREFFER
-                              for z, s in np.argwhere(spielfeld_original == schiffs_laenge)])
 
-    if treffer_zaehler == schiffs_laenge:
-        # Schiff ist versenkt: Markiere das umgebende 3x3 Raster jedes Teils als Wasser
-        for z_schiff, s_schiff in np.argwhere(spielfeld_original == schiffs_laenge):
-            for nz, ns in get_nachbarn(z_schiff, s_schiff, zeilen, spalten):
-                if ki_status[nz, ns] == STATUS_UNBEKANNT:
-                    ki_status[nz, ns] = STATUS_WASSER
+def mark_sunken_ship(r: int, c: int, original_board: np.ndarray, knowledge: np.ndarray) -> bool:
+    """Checks if a ship is sunk and marks the surrounding buffer as misses."""
+    ship_id = original_board[r, c]
+    rows, cols = knowledge.shape
+
+    hits_on_this_ship = np.sum([knowledge[nr, nc] == STATE_HIT
+                                for nr, nc in np.argwhere(original_board == ship_id)])
+
+    if hits_on_this_ship == ship_id:
+        for nr, nc in np.argwhere(original_board == ship_id):
+            for adj_r, adj_c in get_neighbors(nr, nc, rows, cols):
+                if knowledge[adj_r, adj_c] == STATE_UNKNOWN:
+                    knowledge[adj_r, adj_c] = STATE_MISS
         return True
-
     return False
 
 
-# --- HAUPTSIMULATION ---
-
-# NEU: Erwartet das SeedSequence-Objekt (Standardisierung)
-def simuliere_spiel_smart(seed_sequence):
-    """
-    Simuliert ein Schiffe-Versenken-Spiel mit der strategischen KI (Jagd/Ziel-Modus).
-    """
-
-    # 1. Erzeuge lokalen Generator aus der übergebenen SeedSequence
+def run_smart_simulation(seed_sequence: SeedSequence) -> int:
+    """Simulates a game using a smart Hunt & Target strategy."""
     rng = Generator(PCG64(seed_sequence))
+    board = create_new_board(rng=rng)
 
-    # 2. Feld erstellen (übergibt den Generator)
-    feld = erstelle_neues_spielfeld(setup_rng=rng)
+    rows, cols = BOARD_SIZE
+    total_targets = np.sum([l * count for l, count in SHIP_CONFIG.items()])
 
-    zeilen, spalten = FELD_GROESSE
-    spielfeld_original = np.copy(feld)
-    spielfeld_zum_beschuss = np.copy(
-        feld)  # Kopie wird benötigt, um getroffene Teile zu "entfernen" (wenn nötig, aber hier nicht verwendet)
-    gesamte_schiffsteile = np.sum([länge * ANZ_SCHIFFE[länge] for länge in ANZ_SCHIFFE])
+    shots_fired = 0
+    hits_count = 0
+    knowledge = np.zeros(BOARD_SIZE, dtype=int)
+    target_queue: Deque[Tuple[int, int]] = deque()
 
-    schüsse = 0
-    treffer_zaehler = 0
-
-    # ki_status speichert den aktuellen Wissenstand der KI
-    ki_status = np.zeros(FELD_GROESSE, dtype=int)
-    # ziel_warteschlange speichert Koordinaten, die nach einem Treffer in der Nähe beschossen werden sollen
-    ziel_warteschlange = deque()
-
-    while treffer_zaehler < gesamte_schiffsteile:
-
-        # --- BESTIMMEN DES NÄCHSTEN SCHUSSES (Jagd/Ziel) ---
-        if ziel_warteschlange:
-            # ZIELMODUS
-            z, s = ziel_warteschlange.popleft()
-            if ki_status[z, s] != STATUS_UNBEKANNT:
-                continue  # Bereits beschossen, überspringen
+    while hits_count < total_targets:
+        if target_queue:
+            r, c = target_queue.popleft()
+            if knowledge[r, c] != STATE_UNKNOWN: continue
         else:
-            # JAGDMODUS (Checkerboard-Strategie)
-            z, s = None, None
-            alle_unbekannten = [(z_unk, s_unk)
-                                for z_unk in range(zeilen)
-                                for s_unk in range(spalten)
-                                if ki_status[z_unk, s_unk] == STATUS_UNBEKANNT]
+            # HUNT MODE: Checkerboard
+            r, c = None, None
+            unknown_cells = [(ur, uc) for ur in range(rows) for uc in range(cols)
+                             if knowledge[ur, uc] == STATE_UNKNOWN]
 
-            # 1. Suche nach Checkerboard-Positionen
-            for z_jagd, s_jagd in alle_unbekannten:
-                if (z_jagd + s_jagd) % 2 == 0:
-                    z, s = z_jagd, s_jagd
+            for ur, uc in unknown_cells:
+                if (ur + uc) % 2 == 0:
+                    r, c = ur, uc
                     break
 
-            # 2. Fallback: Wenn alle Checkerboard-Positionen weg sind, wähle zufällig aus dem Rest
-            if z is None and alle_unbekannten:
-                # NEU: Nutzt den lokalen Generator (ersetzt np.random.randint)
-                zufalls_index = rng.integers(len(alle_unbekannten))
-                z, s = alle_unbekannten.pop(zufalls_index)
+            if r is None and unknown_cells:
+                idx = rng.integers(len(unknown_cells))
+                r, c = unknown_cells.pop(idx)
 
-            if z is None: break  # Spiel ist theoretisch vorbei, falls die Schleife nicht greift
+            if r is None: break
 
-        # --- SCHUSS AUSFÜHREN ---
-        schüsse += 1
+        shots_fired += 1
+        if board[r, c] > 0:
+            hits_count += 1
+            knowledge[r, c] = STATE_HIT
+            if mark_sunken_ship(r, c, board, knowledge):
+                target_queue.clear()
 
-        if spielfeld_original[z, s] > 0:
-            # TREFFER!
-            treffer_zaehler += 1
-            ki_status[z, s] = STATUS_TREFFER
-
-            # Prüfen, ob das Schiff versenkt wurde
-            if markiere_versenktes_schiff(z, s, spielfeld_original, ki_status):
-                # Wenn versenkt, leere die Warteschlange, um mit der Jagd fortzufahren
-                ziel_warteschlange.clear()
-
-            # Füge die umliegenden (unbeschossenen) orthogonalen Nachbarn der Warteschlange hinzu
-            for nz, ns in [(z + 1, s), (z - 1, s), (z, s + 1), (z, s - 1)]:
-                if 0 <= nz < zeilen and 0 <= ns < spalten and ki_status[nz, ns] == STATUS_UNBEKANNT:
-                    ziel_warteschlange.append((nz, ns))
-
+            # Add orthogonal neighbors to queue
+            for nr, nc in [(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)]:
+                if 0 <= nr < rows and 0 <= nc < cols and knowledge[nr, nc] == STATE_UNKNOWN:
+                    target_queue.append((nr, nc))
         else:
-            # WASSER
-            ki_status[z, s] = STATUS_WASSER
+            knowledge[r, c] = STATE_MISS
 
-    # Gibt nur die Gesamtzahl der Schüsse zurück
-    return schüsse
+    return shots_fired

@@ -1,93 +1,103 @@
-# src/game_setup.py
-
 import numpy as np
-import random
-from numpy.random import Generator, SeedSequence, PCG64
+from numpy.random import Generator
+from typing import Tuple, Dict, List
 
-# Konstanten (sollten in einer eigenen Datei liegen, aber hier zur Übersichtlichkeit)
-FELD_GROESSE = (10, 10)  # 10x10 Feld
-ANZ_SCHIFFE = {
-    5: 1,  # Schlachtschiff
-    4: 1,  # Kreuzer
-    3: 2,  # Zerstörer
-    2: 1  # U-Boot
+# --- CONSTANTS ---
+BOARD_SIZE: Tuple[int, int] = (10, 10)
+SHIP_CONFIG: Dict[int, int] = {
+    5: 1,  # Carrier
+    4: 1,  # Battleship
+    3: 2,  # Destroyer/Cruiser
+    2: 1  # Submarine
 }
 
 
-def ist_platz_frei(feld, reihe, spalte, laenge, horizontal):
-    """Prüft, ob ein Schiff an der gegebenen Position platziert werden kann."""
-    zeilen, spalten = FELD_GROESSE
+def is_space_free(
+        board: np.ndarray,
+        row: int,
+        col: int,
+        length: int,
+        horizontal: bool
+) -> bool:
+    """
+    Checks if a ship can be placed at the given position with a 1-cell buffer.
+
+    Args:
+        board: The current game board array.
+        row: Starting row index.
+        col: Starting column index.
+        length: Length of the ship.
+        horizontal: Orientation of the ship.
+
+    Returns:
+        True if the space is valid and clear of other ships/buffers.
+    """
+    rows, cols = BOARD_SIZE
 
     if horizontal:
-        if spalte + laenge > spalten:
+        if col + length > cols:
             return False
-        # Prüfen auf Überlappung und Abstand
-        for s in range(spalte, spalte + laenge):
-            # Prüfen des Bereichs inkl. Nachbarn im 3x3 Block um jedes Schiffsteil
-            for r_offset in [-1, 0, 1]:
-                for s_offset in [-1, 0, 1]:
-                    nr, ns = reihe + r_offset, s + s_offset
-                    if 0 <= nr < zeilen and 0 <= ns < spalten and feld[nr, ns] != 0:
+        for c in range(col, col + length):
+            for r_off in [-1, 0, 1]:
+                for c_off in [-1, 0, 1]:
+                    nr, nc = row + r_off, c + c_off
+                    if 0 <= nr < rows and 0 <= nc < cols and board[nr, nc] != 0:
                         return False
-    else:
-        if reihe + laenge > zeilen:
+    else:  # Vertical
+        if row + length > rows:
             return False
-        for r in range(reihe, reihe + laenge):
-            for r_offset in [-1, 0, 1]:
-                for s_offset in [-1, 0, 1]:
-                    nr, ns = r + r_offset, spalte + s_offset
-                    if 0 <= nr < zeilen and 0 <= ns < spalten and feld[nr, ns] != 0:
+        for r in range(row, row + length):
+            for r_off in [-1, 0, 1]:
+                for c_off in [-1, 0, 1]:
+                    nr, nc = r + r_off, col + c_off
+                    if 0 <= nr < rows and 0 <= nc < cols and board[nr, nc] != 0:
                         return False
-
     return True
 
 
-# NEU: Die Funktion nimmt jetzt ein Generator-Objekt entgegen
-def erstelle_neues_spielfeld(setup_rng):
+def create_new_board(rng: Generator) -> np.ndarray:
     """
-    Erstellt ein leeres Spielfeld (0) und platziert die Schiffe.
+    Initializes a board and places ships randomly using the provided generator.
+
+    Args:
+        rng: Local NumPy Generator for reproducible randomness.
+
+    Returns:
+        A 10x10 array with ship lengths marking ship positions.
     """
-    feld = np.zeros(FELD_GROESSE, dtype=int)
-    zeilen, spalten = FELD_GROESSE
+    board: np.ndarray = np.zeros(BOARD_SIZE, dtype=int)
+    rows, cols = BOARD_SIZE
 
-    schiffslaengen = []
-    for laenge, anzahl in ANZ_SCHIFFE.items():
-        schiffslaengen.extend([laenge] * anzahl)
+    ship_lengths: List[int] = []
+    for length, count in SHIP_CONFIG.items():
+        ship_lengths.extend([length] * count)
 
-    # Wir mischen die Längen, damit die Platzierung reproduzierbar ist
-    # NEU: Nutzt den lokalen Generator
-    schiffslaengen = setup_rng.permutation(schiffslaengen)
+    # Randomize placement order
+    ship_lengths = rng.permutation(ship_lengths)
 
-    for laenge in schiffslaengen:
-        platziert = False
-        versuche = 0
-        while not platziert and versuche < 1000:
-            versuche += 1
+    for length in ship_lengths:
+        placed = False
+        attempts = 0
+        while not placed and attempts < 1000:
+            attempts += 1
+            is_horizontal = rng.choice([True, False])
 
-            # NEU: Nutzt den lokalen Generator für die Zufallswerte
-
-            # 1. Orientierung: boolsche Werte sind im Generator nicht direkt, daher choice
-            ist_horizontal = setup_rng.choice([True, False])
-
-            # 2. Startposition: nutzt integers (ersetzt np.random.randint)
-            if ist_horizontal:
-                max_r = zeilen - 1
-                max_s = spalten - laenge
+            if is_horizontal:
+                max_r, max_c = rows - 1, cols - length
             else:
-                max_r = zeilen - laenge
-                max_s = spalten - 1
+                max_r, max_c = rows - length, cols - 1
 
-            reihe = setup_rng.integers(0, max_r + 1)
-            spalte = setup_rng.integers(0, max_s + 1)
+            r_start = rng.integers(0, max_r + 1)
+            c_start = rng.integers(0, max_c + 1)
 
-            if ist_platz_frei(feld, reihe, spalte, laenge, ist_horizontal):
-                if ist_horizontal:
-                    feld[reihe, spalte:spalte + laenge] = laenge
+            if is_space_free(board, r_start, c_start, length, is_horizontal):
+                if is_horizontal:
+                    board[r_start, c_start: c_start + length] = length
                 else:
-                    feld[reihe:reihe + laenge, spalte] = laenge
-                platziert = True
+                    board[r_start: r_start + length, c_start] = length
+                placed = True
 
-        if not platziert:
-            raise RuntimeError("Schiff konnte nicht platziert werden. Falsche Konstanten?")
+        if not placed:
+            raise RuntimeError("Could not place ships. Check board constraints.")
 
-    return feld
+    return board
