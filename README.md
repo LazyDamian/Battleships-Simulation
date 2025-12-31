@@ -1,68 +1,44 @@
-# Battleship Game (Schiffe Versenken)
+# ⚓ Battleship Monte Carlo Analysis
 
-This project is a Python implementation of the classic Battleship game ("Schiffe versenken").  
-Ships of different lengths are randomly placed on a 10×10 game board while ensuring they do not touch each other.  
-The logic includes collision checks, spacing rules, and randomized placement using NumPy.
+This project provides a high-performance simulation environment for the game **Battleship**. Using **Monte Carlo simulations**, tens of thousands of games are automated to statistically evaluate the efficiency of different gameplay strategies.
 
----
+## 🎯 Project Objective
+The goal is to provide a quantitative comparison between a baseline random strategy and an optimized AI. The primary metric for success is the number of shots required to sink all ships on a 10x10 grid.
+
+### Strategies
+* **Random Strategy:** Targets the board completely at random without considering previous hits or misses.
+* **Smart AI:** Utilizes a **"Hunt & Target"** algorithm. In "Hunt" mode, it employs a parity (checkerboard) search pattern. Upon a hit, the AI switches to "Target" mode to systematically investigate adjacent cells.
 
 ## 🚀 Features
-- Random ship placement on a 10×10 grid  
-- Ships do not overlap and do not touch (1-cell safety margin)  
-- Configurable ship lengths and quantities  
-- Uses NumPy for efficient computations  
-- Easily extendable for full game logic (shooting, scoring, GUI, etc.)
+* **Parallel Processing:** Leverages `ProcessPoolExecutor` to distribute simulations across all available CPU cores for maximum performance.
+* **Statistical Depth:** Calculates Mean, Minimum/Maximum, Standard Deviation, and Variance for comprehensive analysis.
+* **Automated Plotting:** Generates professional histograms using Matplotlib, featuring highlighted mean values positioned above the data bars.
+* **Reproducibility:** Implements NumPy `SeedSequence` to ensure consistent and verifiable results despite stochastic components.
 
----
+## 📂 Project Structure
+* `main.py`: Central entry point for simulation execution, data analysis, and chart generation.
+* `src/`:
+    * `game_logic.py`: Implementation of the random baseline logic.
+    * `game_logic_smart.py`: Implementation of the Smart AI (Hunt & Target) logic.
+    * `monte_carlo.py`: The simulation engine handling parallelization.
+    * `placement.py`: Algorithm for rule-compliant random ship placement.
+* `figures/`: Automatically created directory for storing result visualizations.
 
-## 📦 Dependencies
+## 📊 Interpretation of Results
+The generated histogram visualizes the distribution of game outcomes:
 
-The project uses the following Python packages (stored in `requirements.txt`):
+![Strategy Comparison](figures/comparison_histogram.png)
 
-numpy==2.3.5
-pandas==2.3.3
-python-dateutil==2.9.0.post0
-pytz==2025.2
-six==1.17.0
-tzdata==2025.2
+1.  **Average (Avg):** The further left the mean line, the more efficient the strategy.
+2.  **Variance:** A narrower distribution for the Smart AI indicates higher consistency and less reliance on luck.
+3.  **Performance Gain:** The distance between the red (Random) and blue (Smart) lines directly visualizes the advantage of the intelligent algorithm.
 
-👉 **Only NumPy is required for the Battleship logic**,  
-but the other packages may be used by other project modules.
-
----
-
-## 🛠 Installation
-
-Make sure you have Python 3 installed.
-
-Install all required dependencies:
-
-```bash
-pip install -r requirements.txt
-Alternatively, install manually what you need:
-
-pip install numpy
-Run the main script:
-
-python spielaufbau.py
-
-
-This will generate a 10×10 game board with randomly placed ships.
-pythonproject0/
-│
-├── src/                # (optional) main source files
-├── tests/              # test scripts
-├── spielaufbau.py      # main Battleship placement logic
-├── requirements.txt    # dependencies
-└── README.md           # project documentation
-Future Improvements
-
--Add a shooting mechanic (hit/miss)
-
--Track game state and score
-
--Add Matplotlib visualization of the board
-
--Implement full player vs AI gameplay
-
--Add a GUI using Tkinter or PyGame
+## 🛠 Installation & Usage
+1.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+2.  **Execute the simulation:**
+    ```bash
+    python main.py
+    ```
