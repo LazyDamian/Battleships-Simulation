@@ -80,7 +80,13 @@ def print_comparison_table(random_stats: Dict[str, Any], smart_stats: Dict[str, 
     for label, key in metrics:
         print(f"{label:<20} | {random_stats[key]:<18.2f} | {smart_stats[key]:<18.2f}")
 
+    print("-" * 65)
+
+    # Calculate improvement percentage
+    improvement = ((random_stats['avg'] - smart_stats['avg']) / random_stats['avg']) * 100
+    print(f"🚀 SMART AI IMPROVEMENT: {improvement:.2f}% fewer shots on average")
     print("=" * 65 + "\n")
+
 
 
 def main():
