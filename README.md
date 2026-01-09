@@ -30,8 +30,7 @@ The generated histogram visualizes the distribution of game outcomes:
 ![Strategy Comparison](figures/comparison_histogram.png)
 
 1.  **Average (Avg):** The further left the mean line, the more efficient the strategy.
-2.  **Variance:** A narrower distribution for the Smart AI indicates higher consistency and less reliance on luck.
-3.  **Performance Gain:** The distance between the red (Random) and blue (Smart) lines directly visualizes the advantage of the intelligent algorithm.
+2.  **Performance Gain:** The distance between the red (Random) and blue (Smart) lines directly visualizes the advantage of the intelligent algorithm.
 
 ## 🛠 Installation & Usage
 1.  **Install dependencies:**
@@ -41,4 +40,5 @@ The generated histogram visualizes the distribution of game outcomes:
 2.  **Execute the simulation:**
     ```bash
     python main.py
+
     ```
